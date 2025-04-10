@@ -5,5 +5,5 @@ Accelerate RNA Folding by Parallel Computing
 ```make```
 
 ## To Run
-```time ./rna``` \
-```time ./rna_mp```
+```time ./bin/rna``` \
+```time ./bin/rna_mp```
