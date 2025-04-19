@@ -9,38 +9,47 @@
 // Function to count RNA secondary structures using the KT formulation, parallelized over i for each span.
 long long total(const std::string &s) {
     int n = s.size();
-
+    
     // Allowed pairs as two-character strings.
     std::unordered_set<std::string> allowed = {"AU", "UA", "CG", "GC", "GU", "UG"};
 
-    // Create a 2D DP table with dimensions (n+1) x (n+1), initialized to 0.
-    std::vector<std::vector<long long>> dp(n + 1, std::vector<long long>(n + 1, 0));
-
-    // Base cases: dp[i][i] = 1 (empty subsequence)
-    // and dp[i][i+1] = 1 (singleton subsequence).
-    for (int i = 0; i <= n; ++i) {
-        dp[i][i] = 1;
-        if (i < n) {
-            dp[i][i + 1] = 1;
+    // pair matrix
+    bool* pairs = new bool[n * n];
+    #pragma omp parallel for collapse(2)
+    for (int i = 0; i < n; i++) {
+        for (int j = i; j < n; j++) {
+            // std::cout << i << " " << j << std::endl;
+            std::string p = { s[i], s[j] };
+            if (allowed.count(p)) {
+                pairs[i * n + j] = 1;
+            } else {
+                pairs[i * n + j] = 0;
+            }
         }
     }
+
+    // Create a 2D DP table with dimensions (n+1) x (n+1), initialized to 0.
+    std::vector<std::vector<long long>> dp(n + 1, std::vector<long long>(n + 1, 1));
 
     // Process spans from 2 to n.
     for (int span = 2; span <= n; ++span) {
         // Parallelize the loop over i for the current span.
-        #pragma omp parallel for schedule(static)
+        // The outer loop iterates over the starting index i of the span.
+        #pragma omp parallel for schedule(dynamic)
         for (int i = 0; i <= n - span; ++i) {
             int j = i + span;
             // Case 1: The base at i is unpaired.
-            dp[i][j] = dp[i + 1][j];
+            // dp[i][j] = dp[i + 1][j];
+            long long subtotal = dp[i + 1][j];
 
             // Case 2: Try to pair the base at i with a base at position k-1.
+            // The inner loop iterates over possible positions k for pairing.
+            # pragma omp parallel for reduction(+:subtotal)
             for (int k = i + 1; k <= j; ++k) {
-                std::string pair = { s[i], s[k - 1] };
-                if (allowed.count(pair)) {
-                    dp[i][j] += dp[i + 1][k - 1] * dp[k][j];
-                }
+                subtotal += dp[i + 1][k - 1] * dp[k][j] * pairs[i * n + k - 1];
             }
+            // Update the DP table with the computed value.
+            dp[i][j] = subtotal;
         }
     }
     return dp[0][n];
@@ -54,13 +63,16 @@ int main() {
     // Test Cases: GRP II 
     std::string test3 = "AGUUUAGUGGUAAAAGUGUGAUUCGUUCUAUUAUCCCUUAAAUAGUUAAAGGGUCCUUCGGUUUGAUUCGUAUUCCGAUCAAAAACUUGAUUUCUAAAAAGGAUUUAAUCCUUUUCCUCUCAAUGACAGAUUCGAGAACAAAUACACAUUCUCGUGAUUUGUAUCCAAGGGUCACUUAGACAUUGAAAAAUUGGAUUAUGAAAUUGCGAAACAUAAUUUUGGAAUUGGAUCAAUACUUCCAAUUGAAUAAGUAUGAAUAAAGGAUCCAUGGAUGAAGAUAGAAAGUUGAUUUCUAAUCGUAACUAAAUCUUCAAUUUCUUAUUUGUAAAGAAGAAAUUGAAGCAAAAUAGCUAUUAAACGAUGACUUUGGUUUACUAGAGACAUCAACAUAUUGUUUUAGCUCGGUGGAAACAAAACCCUUUUCCUCAGGAUCCUAUUAAAUAGAAAUAGAGAACGAAAUAACUAGAAAGGUUGUUAGAAUCCCCUCUUCUAGAAGGAUCAUCUACAAAGCUAUUCGUUUUAUCUGUAUUCAGACCAAAAGCUGACAUAGAUGUUAUGGGUAGAAUUCUUUUUUUUUUUCGAAUUUUGUUCACAUCUUAGAUCUAUAAAUUGACUCAUCUCCAUAAAGGAGCCGAAUGAAACCAAAGUUUCAUGUUCGGUUUUGAAUUAGAGACGUUAAAAAUAAUGAAUCGACGUCGACUAUAACCC";
     std::string test4 = "GCUAGGGAUAACAGGGUGCGACCUGCCAAGCUGCACAAUUCAAUGUGGUUAGAAAACCAACUUGGAAUCCAAUCUCCAUGAGCCUACCAUCACAUGCGUUCUAGGGUUAACCUGAAGGUGUGAAGCUGAUGGGAAAAAGUAACCCAAACUGUAUGUGACAGUGAGGGGGCAGGCUAGAUUCCUAUGGGCAAUGUAAAUGAACACUCAUCUGAGGCAUCGUGACCCUAUCACAUCUAGUUAAUUGUGAGAGAAUCUUAUGUCUCUGUUUCAUAAGAUUGAUUGGACAAUUUCUCACCGGUGUAAAGAGUGGUCCUAAGGGAAUCAUCGAAAGUGAAUUGUGCGGAACAGGGCAAGCCCCAUAGGCUCCUUCGGGAGUGAGCGAAGCAAUUCUCUCUAUCGCCUAGUGGGUAAAAGACAGGGCAAAAAGCGAAUGCCAGUUAGUAAUAGACUGGAUAGGGUGAAUAACCUAACCUGAAAGGGUGCAGACUUGCUCAUGGGCGUGGGAAAUCAGAUUUCGUGAAUACACCAGCAUUCAAGAGUUUCCAUGCUUGAGCCGUGUGCGGUGAAAGUCGCAUGCACGGUUCUACUGGGGGGAAAGCCUGAGAGGGCCUACCUAUCCAACUUU";
-    // std::string test5 = "AGGCAUCAAACCCUGCAUGGGAGCGGAUGCCGUGUAGUCCAAAGACUUCUUUGGCACUAAGGCAUCAAACCCUGCAUGGGAGCGGAUGCCGUGUAGUCCAAAGACUUCUUUGGCACUAAGGCAUCAAACCCUGCAUGGGAGCGGAUGCCGUGUAGUCCAAAGACUUCUUUGGCACUAAGGCAUCAAACCCUGCAUGGGAGCGGAUGCCGUGUAGUCCAAAGACUUCUUUGGCACUAAGGCAUCAAACCCUGCAUGGGAGCGGAUGCCGUGUAGUCCAAAGACUUCUUUGGCACUAAGGCAUCAAACCCUGCAUGGGAGCGGAUGCCGUGUAGUCCAAAGACUUCUUUGGCACUAAGGCAUCAAACCCUGCAUGGGAGCGGAUGCCGUGUAGUCCAAAGACUUCUUUGGCACUAAGGCAUCAAACCCUGCAUGGGAGCGGAUGCCGUGUAGUCCAAAGACUUCUUUGGCACUA";
-
+    
+    // combination
+    std::string test5 = test2 + test3 + test4;
 
     // std::cout << "total(\"" << test1 << "\") = " << total(test1) << "\n";
     // std::cout << "total(\"" << test2 << "\") = " << total(test2) << "\n";
     std::cout << "total(\"" << test3 << "\") = " << total(test3) << "\n";
     std::cout << "total(\"" << test4 << "\") = " << total(test4) << "\n";
+
+    std::cout << "total(\"" << test5 << "\") = " << total(test5) << "\n";
 
     return 0;
 }
